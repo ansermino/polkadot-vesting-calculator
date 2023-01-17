@@ -28,6 +28,18 @@ Total (DOT): 226
 
 ```
 
+### CSV Output
+
+You can optionally output the data to a CSV file:
+```
+node index.js --csv file.csv
+```
+
+The CSV file uses this format:
+```
+Account, Total Balance, Vested Balance, Final Vesting Date
+```
+
 ## Contributors
 
 Many thanks to @Tbaut for contributing most of this script.

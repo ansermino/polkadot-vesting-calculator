@@ -1,9 +1,11 @@
-import { ApiPromise, WsProvider } from '@polkadot/api';
-const wsProvider = new WsProvider('wss://rpc.polkadot.io');
-const api = await ApiPromise.create({ provider: wsProvider });
-import * as dotenv from 'dotenv'
-dotenv.config();
+import {ApiPromise, WsProvider} from '@polkadot/api';
 
+const wsProvider = new WsProvider('wss://rpc.polkadot.io');
+const api = await ApiPromise.create({provider: wsProvider});
+import * as dotenv from 'dotenv'
+
+dotenv.config();
+import { createArrayCsvWriter } from "csv-writer";
 
 const DECIMALS = 10n
 
@@ -19,16 +21,16 @@ const computeDate = (addSeconds) => {
 }
 
 const formatAmount = (n) => {
-    return  n / BigInt(10)**DECIMALS
+    return n / BigInt(10) ** DECIMALS
 }
 
 const getInfo = async (account) => {
     const blockHeader = await api.rpc.chain.getHeader()
-    const currentBlockNumber =  BigInt(blockHeader.number.toNumber())
+    const currentBlockNumber = BigInt(blockHeader.number.toNumber())
     const vestingResponse = await api.query.vesting.vesting(account);
     if (vestingResponse.isEmpty) {
         // Retrieve the account balance & nonce via the system module
-        const { data: balance } = await api.query.system.account(account);
+        const {data: balance} = await api.query.system.account(account);
         return (
             {
                 address: account,
@@ -39,7 +41,11 @@ const getInfo = async (account) => {
             }
         )
     }
-    const {locked: lockedString, perBlock: perBlockString, startingBlock: startingBlockString} = vestingResponse.toHuman()[0]
+    const {
+        locked: lockedString,
+        perBlock: perBlockString,
+        startingBlock: startingBlockString
+    } = vestingResponse.toHuman()[0]
 
     const locked = stringtoBigInt(lockedString)
     const perBlock = stringtoBigInt(perBlockString)
@@ -73,16 +79,26 @@ const getInfo = async (account) => {
 const printInfo = (acct) => {
     console.log('-----------------------------')
     console.log('account: ' + acct.address)
-    console.log(formatAmount(acct.vestedAmount) + " vested ("+ acct.percentageVested + "%) with " + formatAmount(acct.remainingToBeVested) + " remaining.")
+    console.log(formatAmount(acct.vestedAmount) + " vested (" + acct.percentageVested + "%) with " + formatAmount(acct.remainingToBeVested) + " remaining.")
     console.log('Fully vested on', computeDate(acct.secondsUntilFullyVested))
 }
 
-const main = async (accounts) => {
-    let acctProm = accounts.map(async (acct) => await getInfo(acct))
-    let acctData = await Promise.all(acctProm)
+const parseAccountsToCSVFormat = (accts) => {
+    console.log(accts)
+    return accts.map((acct) => {
+        return [
+            acct.address, //Account
+            formatAmount(acct.vestedAmount + acct.remainingToBeVested), //Total Balance
+            formatAmount(acct.vestedAmount), // Vested Amount
+            // If balance empty or vesting complete, return empty string
+            acct.secondsUntilFullyVested === 0n ? "" : computeDate(acct.secondsUntilFullyVested).toLocaleDateString() //Final Vesting Date
+        ]
+    })
+}
+
+const printAccounts = (acctData) => {
     let totalVestedDot = BigInt(0)
     let totalDot = BigInt(0)
-
 
     acctData.sort((a, b) => {
         if (a.percentageVested > b.percentageVested) return -1
@@ -100,4 +116,29 @@ const main = async (accounts) => {
     console.log('Total (DOT): ' + formatAmount(totalDot))
 }
 
-main(JSON.parse(process.env.ACCOUNTS))
+const writeToCSV = async (accts, filepath) => {
+    const csvWriter = createArrayCsvWriter({
+        header: ['Account', 'Total Balance', 'Vested Balance', 'Final Vesting Date'],
+        path: filepath
+    });
+
+    let csvAccts = parseAccountsToCSVFormat(accts)
+
+    await csvWriter.writeRecords(csvAccts)
+}
+
+const main = async (accounts) => {
+    let acctProm = accounts.map(async (acct) => await getInfo(acct))
+    let acctData = await Promise.all(acctProm)
+
+    if (process.argv.length === 2) {
+        await printAccounts(acctData)
+    }else if (process.argv.length === 4 && process.argv[2] === '--csv') {
+        await writeToCSV(acctData, process.argv[3])
+    } else {
+        console.log("Unexpected command line arguments: ", process.argv.slice(2))
+        process.exit(1)
+    }
+}
+
+main(JSON.parse(process.env.ACCOUNTS)).then(() => process.exit(0))

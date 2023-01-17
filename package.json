@@ -11,6 +11,7 @@
   "type": "module",
   "dependencies": {
     "@polkadot/api": "^9.6.1",
+    "csv-writer": "^1.6.0",
     "dotenv": "^16.0.3"
   }
 }
